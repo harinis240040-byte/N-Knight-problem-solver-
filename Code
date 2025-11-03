@@ -1,0 +1,262 @@
+index.html:
+   
+
+def isSafe(x, y, board, n):
+    return 0 <= x < n and 0 <= y < n and board[x][y] == -1
+def solveKTBacktracking(board, x, y, movei, move_x, move_y, n):
+    if movei == n * n:
+        return True
+    for i in range(8):
+        nx = x + move_x[i]
+        ny = y + move_y[i]
+        if isSafe(nx, ny, board, n):
+            board[nx][ny] = movei
+            if solveKTBacktracking(board, nx, ny, movei + 1, move_x, move_y, n):
+                return True
+            board[nx][ny] = -1 
+    return False
+def printBoard(board, n):
+    for row in board:
+        print(" ".join(f"{c:2}" for c in row))
+def knightTour(n):
+    board = [[-1 for _ in range(n)] for _ in range(n)]
+    move_x = [2, 1, -1, -2, -2, -1, 1, 2]
+    move_y = [1, 2, 2, 1, -1, -2, -2, -1]
+    board[0][0] = 0
+    if not solveKTBacktracking(board, 0, 0, 1, move_x, move_y, n):
+        print("No solution exists")
+    else:
+        print("Final Knight's Tour Solution (Backtracking):")
+        printBoard(board, n)
+n = int(input("Enter board size (e.g., 5): "))
+knightTour(n)
+
+style.css:
+ :root{
+  --size:60px;
+  --bg:#f3f6fb;
+  --card:#fff;
+  --light:#f9fbff;
+  --dark:#dceeff;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);font-family:Arial,Helvetica,sans-serif}
+.app{display:flex;gap:20px;padding:22px;max-width:1100px;margin:20px auto;align-items:flex-start}
+.board-area{flex:1;display:flex;justify-content:center;align-items:center}
+.board{
+  display:grid;
+  padding:8px;
+  background:var(--card);
+  border-radius:12px;
+  box-shadow:0 6px 18px rgba(20,30,60,0.06);
+}
+.square{
+  width:var(--size);height:var(--size);
+  display:flex;align-items:center;justify-content:center;
+  position:relative;cursor:pointer;border-radius:8px;
+  transition:background .12s;
+  user-select:none;
+}
+.square.light{background:var(--light)}
+.square.dark{background:var(--dark)}
+.square .num{position:absolute;left:6px;top:6px;font-size:12px;color:#0b1220}
+.square .knight{font-size:18px}
+.square.highlight{box-shadow:inset 0 0 0 3px rgba(31,111,235,0.08)}
+
+.panel{width:320px;background:var(--card);padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(20,30,60,0.06)}
+.row{display:flex;gap:8px;margin:8px 0;align-items:center}
+.status{margin-top:12px;padding:10px;border-radius:8px;background:#fbfdff;border:1px solid #e6eefc}
+.counters{margin-top:10px;font-weight:700}
+button{padding:8px 10px;border-radius:8px;border:1px solid #2b6cb0;background:#e7f0ff;color:#0b3a80;cursor:pointer}
+button:active{transform:translateY(1px)}
+@media (max-width:900px){ .app{flex-direction:column} :root{--size:48px} }
+
+script.js:
+  document.addEventListener('DOMContentLoaded', () => {
+  // DOM references
+  const boardEl = document.getElementById('board');
+  const sizeSelect = document.getElementById('sizeSelect');
+  const createBtn = document.getElementById('createBtn');
+  const toggleHintsBtn = document.getElementById('toggleHints');
+  const undoBtn = document.getElementById('undoBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const autoBtn = document.getElementById('autoBtn');
+  const solveAnimBtn = document.getElementById('solveAnimBtn');
+  const statusBox = document.getElementById('statusBox');
+  const moveCountEl = document.getElementById('moveCount');
+  const visitedCountEl = document.getElementById('visitedCount');
+  const totalSquaresEl = document.getElementById('totalSquares');
+
+  // knight moves
+  const MOVES = [[2,1],[1,2],[-1,2],[-2,1],[-2,-1],[-1,-2],[1,-2],[2,-1]];
+
+  // state
+  let N = parseInt(sizeSelect.value, 10) || 6;
+  let grid = [];             // grid[r][c] = { visited, elem, num }
+  let knight = null;         // [r,c]
+  let history = [];          // visited order
+  let moveIndex = 0;
+  let hints = true;
+  let animRunning = false;
+
+  // helpers
+  function setStatus(s){ statusBox.textContent = 'Status: ' + s; }
+  function updateCounters(){ moveCountEl.textContent = moveIndex; visitedCountEl.textContent = history.length; totalSquaresEl.textContent = N*N; }
+
+  // build board (with event delegation)
+  function buildBoard(n){
+    N = n;
+    grid = Array.from({length:N}, ()=> Array(N).fill(null));
+    knight = null; history = []; moveIndex = 0; animRunning = false;
+    boardEl.innerHTML = '';
+    const sizePx = Math.max(40, Math.min(80, Math.floor(420 / N)));
+    document.documentElement.style.setProperty('--size', sizePx + 'px');
+    boardEl.style.gridTemplateColumns = `repeat(${N}, ${sizePx}px)`;
+    boardEl.style.width = `calc(${sizePx}px * ${N} + 16px)`;
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        const sq = document.createElement('div');
+        sq.className = 'square ' + (((r+c)%2===0)?'light':'dark');
+        sq.dataset.r = r; sq.dataset.c = c;
+        const num = document.createElement('div'); num.className = 'num';
+        sq.appendChild(num);
+        boardEl.appendChild(sq);
+        grid[r][c] = { visited:false, elem:sq, num:null, numSpan:num };
+      }
+    }
+    setStatus('click any square to place the knight');
+    updateCounters();
+  }
+
+  // event delegation for board clicks (reliable)
+  boardEl.addEventListener('click', (ev) => {
+    if(animRunning) return;
+    const sq = ev.target.closest('.square');
+    if(!sq) return;
+    const r = Number(sq.dataset.r), c = Number(sq.dataset.c);
+    if(!Number.isFinite(r) || !Number.isFinite(c)) return;
+
+    // if knight not placed yet, place it
+    if(!knight){
+      placeKnight(r,c);
+      return;
+    }
+
+    // otherwise attempt move if legal
+    const [kr,kc] = knight;
+    if(isLegalMove(kr,kc,r,c) && !grid[r][c].visited){
+      moveTo(r,c);
+    } else {
+      setStatus('illegal move. click a highlighted square.');
+    }
+  });
+
+  function isLegalMove(fr,fc,tr,tc){
+    for(const [dr,dc] of MOVES) if(fr+dr===tr && fc+dc===tc) return true;
+    return false;
+  }
+
+  // place knight at first click
+  function placeKnight(r,c){
+    knight = [r,c];
+    grid[r][c].visited = true;
+    grid[r][c].num = ++moveIndex;
+    history.push([r,c]);
+    refreshBoard();
+    setStatus(`knight placed at (${r},${c})`);
+    updateCounters();
+  }
+
+  // move without fancy animation (safe)
+  function moveTo(r,c){
+    knight = [r,c];
+    grid[r][c].visited = true;
+    grid[r][c].num = ++moveIndex;
+    history.push([r,c]);
+    refreshBoard();
+    setStatus(`moved to (${r},${c})`);
+    updateCounters();
+    checkGameState();
+  }
+
+  // refresh visuals: numbers + highlights
+  function refreshBoard(){
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        const cell = grid[r][c];
+        const el = cell.elem;
+        el.classList.remove('highlight');
+        cell.numSpan.textContent = cell.visited ? cell.num : '';
+      }
+    }
+    if(knight && hints){
+      const [r,c] = knight;
+      for(const [dr,dc] of MOVES){
+        const nr=r+dr, nc=c+dc;
+        if(nr>=0 && nr<N && nc>=0 && nc<N && !grid[nr][nc].visited){
+          grid[nr][nc].elem.classList.add('highlight');
+        }
+      }
+    }
+  }
+
+  // undo last move
+  function undo(){
+    if(animRunning) return;
+    if(history.length <= 1){ setStatus('nothing to undo'); return; }
+    const last = history.pop();
+    grid[last[0]][last[1]].visited = false;
+    grid[last[0]][last[1]].num = null;
+    moveIndex = Math.max(0, moveIndex-1);
+    const prev = history[history.length-1];
+    knight = [prev[0], prev[1]];
+    refreshBoard();
+    setStatus('undid last move');
+    updateCounters();
+  }
+
+  function resetBoard(){
+    if(animRunning) return;
+    buildBoard(N);
+  }
+
+  // very simple solver attempt (warnsdorff/backtracking would be added later)
+  function autoSolve(animated=false){
+    if(!history.length){ setStatus('place knight first'); return; }
+    setStatus('auto-solve: not implemented in minimal version yet');
+  }
+
+  // check win or stuck
+  function hasLegal(){
+    if(!knight) return false;
+    const [r,c] = knight;
+    for(const [dr,dc] of MOVES){
+      const nr=r+dr, nc=c+dc;
+      if(nr>=0 && nr<N && nc>=0 && nc<N && !grid[nr][nc].visited) return true;
+    }
+    return false;
+  }
+  function checkGameState(){
+    if(history.length === N*N){ setStatus('congratulations — tour complete!'); return; }
+    if(!hasLegal()){ setStatus('stuck — no legal moves left'); }
+  }
+
+  // UI wiring
+  createBtn.addEventListener('click', ()=> buildBoard(parseInt(sizeSelect.value,10)));
+  toggleHintsBtn.addEventListener('click', ()=> { hints = !hints; refreshBoard(); setStatus('hints ' + (hints ? 'on' : 'off')); });
+  undoBtn.addEventListener('click', undo);
+  resetBtn.addEventListener('click', resetBoard);
+  autoBtn.addEventListener('click', ()=> autoSolve(false));
+  solveAnimBtn.addEventListener('click', ()=> autoSolve(true));
+  sizeSelect.addEventListener('change', ()=> totalSquaresEl.textContent = parseInt(sizeSelect.value,10)**2);
+
+  // keyboard shortcuts
+  window.addEventListener('keydown', (e)=>{
+    if(e.key === 'u') undo();
+    if(e.key === 'r') resetBoard();
+    if(e.key === 'h'){ hints = !hints; refreshBoard(); setStatus('hints ' + (hints ? 'on' : 'off')); }
+  });
+
+  // initial build
+  buildBoard(N);
+});
